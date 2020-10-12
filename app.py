@@ -29,6 +29,9 @@ api = Api(app, doc=False)
 
 @api.route('/profile')
 class Profile(Resource):
+    """Profile Endpoint fetches profile info related to the signed account.
+    """
+
     def get(self):
         if 'credentials' not in flask.session:
             return flask.redirect(api.url_for(GetAuthorization))
@@ -41,18 +44,23 @@ class Profile(Resource):
             API_VERSION,
             credentials=credentials
         )
+        # peopele api service (https://developers.google.com/people/v1/profiles#python)
         profile = people_service.people().get(
             resourceName='people/me', personFields='names,emailAddresses'
         ).execute()
         name = profile['names'][0]['displayName']
+
+        # flask session is used to pass state info between methods/endpoints
         flask.session['credentials'] = credentials_to_dict(credentials)
 
-        # return flask.jsonify(**profile)
-        # return (f'Pawpaw profile for {name}. <a href="/revoke">Logout..</a>')
         return {'name': name, 'revoke_url': '/revoke'}
     
 @api.route('/authorize')
 class GetAuthorization(Resource):
+    """Authorization Endpoint begins the authentication process, requesting
+    access to the User's Google Account.
+    """
+
     def get(self):
         # creating OAuth Flow
         flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
@@ -60,19 +68,26 @@ class GetAuthorization(Resource):
             scopes=SCOPES
         )
         flow.redirect_uri = api.url_for(OAuthCallback, _external=True)
+
+        # construct and redirect app to OAuth URL
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             inlucde_granted_scopes='true'
         )
 
+        # flask session is used to pass state data in between methods/endpoints
         flask.session['state'] = state
         return flask.redirect(authorization_url)
 
 @api.route('/oauth2callback')
 class OAuthCallback(Resource):
+    """Endpoint completes the OAuth process
+    """
+
     def get(self):
         state = flask.session['state']
 
+        # continue oauth flow
         flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
             CLIENT_SECRETS_FILE,
             scopes=SCOPES,
@@ -80,24 +95,32 @@ class OAuthCallback(Resource):
         )
         flow.redirect_uri = api.url_for(OAuthCallback, _external=True)
         
+        # completing the oatuh process, access tokens and credentials are issued
         authorization_response = flask.request.url
         flow.fetch_token(authorization_response=authorization_response)
 
+        # credentials are stored in flask.session. in prod, persistent storage will be used
         credentials = flow.credentials
         flask.session['credentials'] = credentials_to_dict(credentials)
 
+        # authentication is complete, redirect to /profile
         return flask.redirect(api.url_for(Profile))
 
 @api.route('/revoke')
-class Revoke(Resource):    
+class Revoke(Resource):
+    """Revoke Endpoint effectively logs a user out from the app.
+    """
+
     def get(self):
         if 'credentials' not in flask.session:
-            return ('OAuth unavailable. Authorize first: <a href="/authorize">authorize</a>.')
+            # no user is logged in
+            return {'msg': 'OAuth unavailable.', 'authorization_url': '/authorize'}
         
         credentials = google.oauth2.credentials.Credentials(
             **flask.session['credentials']
         )
 
+        # revoke given access tokens and credentials
         revoke = requests.post(
             'https://oauth2.googleapis.com/revoke',
             params={'token': credentials.token},
@@ -106,18 +129,18 @@ class Revoke(Resource):
         if revoke.status_code == 200:
             # also clear credentials on the way out..
             ClearCredentials().get()
-            # return ('Credentials successfully revoked. <a href="/">Go home</a>')
             return {'msg': 'Credentials successfully revoked.', 'next_url': '/'}
         else:
-            # return ('An error occured.')
-            return {'msg': 'An error occured.'}
+            return {'msg': 'An error occured.'}, 500
 
 @api.route('/clear')
 class ClearCredentials(Resource):
+    """Endpoint clears temporarily stored access credentials.
+    """
+
     def get(self):
         if 'credentials' in flask.session:
             del flask.session['credentials']
-        # return ('Credentials have been cleared. <a href="/">Go home</a>')
         return {'msg': 'Credentials have been cleared.', 'next_url': '/'}
 
 
