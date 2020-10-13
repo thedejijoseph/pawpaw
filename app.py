@@ -28,6 +28,27 @@ class RootView(Resource):
         return {'msg': 'You are at root'}
 
 
+@api.route('/token-signup')
+class TokenSignup(Resource):
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('idtoken', required=True, help='IDToken must be specified.')
+        args = parser.parse_args()
+        token = args['idtoken']
+
+        try:
+            idinfo = id_token.verify_oauth2_token(token, requests.Request(), CLIENT_ID)
+            if not user_exists(idinfo['email']):
+                app_token = create_user(idinfo['name'], idinfo['email'], idinfo['jti'])
+                return {'msg': 'User created successfully.', 'token': app_token}
+            else:
+                return {'error': 'User exists already'}
+        except ValueError:
+            return {'error': 'Could not verify token.'}, 400
+        except sqlalchemy.exc.IntegrityError:
+            return {'error': 'User exists already'}
+
+
 @api.route('/token-signin')
 class TokenSignin(Resource):
     def post(self):
@@ -38,13 +59,10 @@ class TokenSignin(Resource):
 
         try:
             idinfo = id_token.verify_oauth2_token(token, requests.Request(), CLIENT_ID)
-            app_token = create_user(idinfo['name'], idinfo['email'])
-            return {'msg': 'Signed in successfully', 'token': app_token}
+            app_token = token_signin_get_token(idinfo['email'])
+            return {'msg': 'User created successfully.', 'token': app_token}
         except ValueError:
-            # raise
             return {'error': 'Could not verify token.'}, 400
-        except sqlalchemy.exc.IntegrityError:
-            return {'error': 'User exists already'}
 
 @api.route('/profile')
 class Profile(Resource):
@@ -54,8 +72,8 @@ class Profile(Resource):
     def post(self):
         auth_header = flask.request.headers.get('Authorization')
         user = authenticate_user(auth_header)
-        flask.session['user'] = user
-        return {'user': user}
+        flask.session['user'] = user.email
+        return {'name': user.name, 'email': user.email}
 
 
 if __name__ == "__main__":

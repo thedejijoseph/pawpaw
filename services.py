@@ -6,31 +6,34 @@ def create_token(name, email):
     pass
 
 def retrieve_info(token):
-    return token
+    user_id = session.query(Token.user_id).filter(Token.key==token)[0]
+    user = session.query(User).filter(User.id==user_id)[0]
+    return user
 
-def create_user(name, email):
+
+def create_user(name, email, token):
     user = User(name=name, email=email)
     session.add(user)
     session.commit()
 
     # TODO: generate unique tokens for each user
-    return email
+    # temporary implementation
+    token = Token(user_id=user.id, key=token)
+    session.add(token)
+    session.commit()
+    return token.key
 
-def authenticate(func):
-    # TODO: retrieve user info from token
-    def wrapper():
-        print('waht')
-        auth_header = flask.request.headers.get('Authorization')
-        if not auth_header:
-            return {'error': 'Invalid authentication'}  
-        try:
-            token = auth_header.split('Bearer ')[1]
-            user = retrieve_info(token)
-            flask.session['user'] = user
-        except:
-            raise
-            # return {'error': 'Could not parse token'}
-    return wrapper
+def user_exists(email):
+    q = session.query(User).filter(User.email==email)
+    if list(q):
+        return True
+    else:
+        return False
+
+def token_signin_get_token(email):
+    user_id = session.query(User.id).filter(User.email==email)
+    token = session.query(Token).filter(Token.user_id==user_id)[0]
+    return token.key
 
 def authenticate_user(auth_header):
     if not auth_header:
