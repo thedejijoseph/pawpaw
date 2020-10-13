@@ -60,7 +60,7 @@ class TokenSignin(Resource):
         try:
             idinfo = id_token.verify_oauth2_token(token, requests.Request(), CLIENT_ID)
             app_token = token_signin_get_token(idinfo['email'])
-            return {'msg': 'User created successfully.', 'token': app_token}
+            return {'msg': 'User authenticated successfully.', 'token': app_token}
         except ValueError:
             return {'error': 'Could not verify token.'}, 400
 
